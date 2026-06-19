@@ -37,6 +37,7 @@ class OntologyMapper:
         "right side mirror": "side_mirror",
         "left mirror": "side_mirror",
         "right mirror": "side_mirror",
+        "side mirror panel": "side_mirror",
         "glass": "windshield",
         "windshield glass": "windshield",
         "front glass": "windshield",
@@ -53,6 +54,7 @@ class OntologyMapper:
         "body edge": "body",
         "laptop body": "body",
         "laptop corner": "corner",
+        "outer corner": "corner",
         "corner": "corner",
         "lid area": "lid",
         "laptop lid": "lid",
@@ -65,6 +67,8 @@ class OntologyMapper:
         "label": "label",
         "shipping label": "label",
         "address label": "label",
+        "package surface": "package_side",
+        "box surface": "package_side",
         
         # Issues
         "wet": "water_damage",
@@ -72,6 +76,7 @@ class OntologyMapper:
         "wet package": "water_damage",
         "wet box": "water_damage",
         "moisture": "water_damage",
+        "wet-looking stain": "water_damage",
         "scratch": "scratch",
         "scratches": "scratch",
         "mark": "scratch",
@@ -96,7 +101,8 @@ class OntologyMapper:
         "broken": "broken_part",
         "missing keys": "keys_missing",
         "key missing": "keys_missing",
-        "liquid damage": "liquid_damage"
+        "liquid damage": "liquid_damage",
+        "water damage": "water_damage"
     }
 
     @classmethod

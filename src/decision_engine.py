@@ -37,11 +37,11 @@ class DecisionEngine:
                 justification = f"Sufficient visual evidence was not provided to verify the claim. {evidence_reason}"
         else:
             # Evidence standard is met (target part is visible and inspectable)
-            if "claim_mismatch" in risk_flags or "wrong_object" in risk_flags:
+            if "claim_mismatch" in risk_flags or "wrong_object" in risk_flags or "non_original_image" in risk_flags:
                 # If there's a mismatch (e.g. no damage visible, or different damage visible)
                 if "damage_not_visible" in risk_flags:
                     claim_status = "contradicted"
-                    severity = "none"
+                    severity = severity_hint if severity_hint != "unknown" else "none"
                     justification = f"The image clearly shows the claimed {claim_part}, but there is no visible damage, which contradicts the claim."
                 else:
                     claim_status = "contradicted"

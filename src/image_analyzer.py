@@ -40,7 +40,7 @@ class ImageAnalyzer:
             logger.error(f"Prompt file not found at {prompt_path}, using hardcoded baseline instructions.")
             self.system_instruction = "Analyze the image and report the visible object, parts, and damage."
 
-    def analyze_image(self, image_path: str) -> dict:
+    def analyze_image(self, image_path: str, claim_object: str = None, claim_part: str = None, claim_issue: str = None) -> dict:
         image_id = os.path.basename(image_path).split('.')[0]
         
         if not os.path.exists(image_path):
@@ -64,13 +64,25 @@ class ImageAnalyzer:
 
             image_part = {
                 "mime_type": mime_type,
-                "data": img_data
+                "data": img_data,
+                "image_path": image_path
             }
 
             prompt_content = f"Please analyze image {image_id}. Return JSON adhering strictly to the schema."
+            if claim_object:
+                prompt_content += f"\nClaimed Object: {claim_object}"
+            if claim_part:
+                prompt_content += f"\nClaimed Part: {claim_part}"
+            if claim_issue:
+                prompt_content += f"\nClaimed Issue: {claim_issue}"
             
+            system_instruction = self.system_instruction
+            system_instruction = system_instruction.replace("{claimed_object}", claim_object or "unknown")
+            system_instruction = system_instruction.replace("{claimed_part}", claim_part or "unknown")
+            system_instruction = system_instruction.replace("{claimed_issue}", claim_issue or "unknown")
+
             parsed = self.caller.call_with_schema(
-                system_instruction=self.system_instruction,
+                system_instruction=system_instruction,
                 prompt_content=prompt_content,
                 schema=IMAGE_ANALYZER_SCHEMA,
                 image_parts=[image_part]

@@ -50,8 +50,23 @@ class EvidenceEngine:
             reason = "No images were submitted with the claim."
             valid_image = False
         elif not object_match:
-            evidence_standard_met = False
-            reason = f"The submitted images show a different object rather than the claimed {claim_object}."
+            # Distinguish between category mismatch and identity mismatch
+            has_different_category = False
+            different_category = "unknown"
+            for analysis in analyses:
+                vis_obj = analysis.get("visible_object", "unknown")
+                if vis_obj in ["car", "laptop", "package"] and vis_obj != claim_object:
+                    has_different_category = True
+                    different_category = vis_obj
+            
+            if has_different_category:
+                # Category mismatch -> contradiction. We consider evidence standard met to trigger contradiction.
+                evidence_standard_met = True
+                reason = f"The submitted images show a different object category ({different_category}) rather than the claimed {claim_object}."
+            else:
+                # Identity mismatch or completely unknown -> insufficient evidence
+                evidence_standard_met = False
+                reason = f"The submitted images do not show the claimed {claim_object} (unrecognized or different individual object)."
         elif not part_visible:
             evidence_standard_met = False
             reason = f"The image does not show the claimed {claim_part}, so the condition cannot be verified."

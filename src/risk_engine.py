@@ -56,7 +56,7 @@ class RiskEngine:
 
         # Check for claim mismatch: if the visible damage does not match the claimed damage
         claim_mismatch = False
-        if object_match:
+        if object_match and claim_issue != "none":
             # Check if there is any image showing the claimed issue
             matched_issue = False
             for analysis in analyses:

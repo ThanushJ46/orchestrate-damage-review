@@ -70,17 +70,30 @@ def main():
         
         # Step 3.1: Parse the conversational claim
         raw_claim = claim_parser.parse_claim(user_claim, claim_object)
+        logger.info(f"[DEFENSIVE LOG] Raw Gemini ClaimParser Output: {raw_claim}")
+        
         std_claim = OntologyMapper.standardize_claim(raw_claim)
+        logger.info(f"[DEFENSIVE LOG] Ontology-Normalized Claim: {std_claim}")
         
         # Step 3.2: Analyze visual evidence
         image_paths = [p.strip() for p in image_paths_raw.split(";") if p.strip()]
         std_analyses = []
         for path in image_paths:
-            raw_analysis = image_analyzer.analyze_image(path)
+            import os
+            raw_analysis = image_analyzer.analyze_image(
+                path,
+                claim_object=std_claim.get("object_type"),
+                claim_part=std_claim.get("object_part"),
+                claim_issue=std_claim.get("issue_type")
+            )
+            logger.info(f"[DEFENSIVE LOG] Raw Gemini ImageAnalyzer Output for {os.path.basename(path)}: {raw_analysis}")
+            
             std_analysis = OntologyMapper.standardize_image(raw_analysis, std_claim["object_type"])
+            logger.info(f"[DEFENSIVE LOG] Ontology-Normalized Image Analysis for {os.path.basename(path)}: {std_analysis}")
             std_analyses.append(std_analysis)
             
         # Step 3.3: Run Evidence evaluation
+        logger.info(f"[DEFENSIVE LOG] Final EvidenceEngine Inputs - Claim: {std_claim}, Analyses: {std_analyses}")
         evidence_res = evidence_engine.evaluate(std_claim, std_analyses)
         
         # Step 3.4: Evaluate risks
@@ -90,6 +103,33 @@ def main():
         decision_res = decision_engine.decide(std_claim, evidence_res, risk_res)
         
         # Step 3.6: Compile final row
+        out_part = std_claim["object_part"]
+        out_issue = std_claim["issue_type"]
+        
+        if decision_res["claim_status"] == "contradicted":
+            # If wrong object category mismatch
+            if "wrong_object" in risk_res["risk_flags"]:
+                has_diff_category = False
+                for r_an in std_analyses:
+                    vis_obj = r_an.get("visible_object")
+                    if vis_obj != std_claim["object_type"] and vis_obj in ["car", "laptop", "package"]:
+                        has_diff_category = True
+                if has_diff_category:
+                    out_part = "unknown"
+                    out_issue = "unknown"
+            # If claim mismatch (different damage/part visible)
+            elif "claim_mismatch" in risk_res["risk_flags"] and "damage_not_visible" not in risk_res["risk_flags"]:
+                visible_parts_list = []
+                visible_damage_val = "unknown"
+                for r_an in std_analyses:
+                    if r_an.get("visible_damage") not in ["none", "unknown"]:
+                        visible_damage_val = r_an.get("visible_damage")
+                        visible_parts_list = r_an.get("visible_parts", [])
+                
+                if visible_damage_val != "unknown":
+                    out_issue = visible_damage_val
+                    out_part = visible_parts_list[0] if visible_parts_list else "unknown"
+        
         out_row = {
             "user_id": user_id,
             "image_paths": image_paths_raw,
@@ -98,8 +138,8 @@ def main():
             "evidence_standard_met": evidence_res["evidence_standard_met"],
             "evidence_standard_met_reason": evidence_res["evidence_standard_met_reason"],
             "risk_flags": risk_res["risk_flags"],
-            "issue_type": std_claim["issue_type"],
-            "object_part": std_claim["object_part"],
+            "issue_type": out_issue,
+            "object_part": out_part,
             "claim_status": decision_res["claim_status"],
             "claim_status_justification": decision_res["claim_status_justification"],
             "supporting_image_ids": evidence_res["supporting_image_ids"],
@@ -111,7 +151,9 @@ def main():
         
     # 4. Save outputs
     out_df = pd.DataFrame(results)
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    dirname = os.path.dirname(args.output)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
     out_df.to_csv(args.output, index=False)
     logger.info(f"Processing complete. Saved outputs to {args.output}")
     
