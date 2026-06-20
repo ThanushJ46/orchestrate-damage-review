@@ -157,36 +157,5 @@ class ClaimParser:
             logger.info(f"[Gemini] Parsed claim: object={parsed.get('object_type')}, part={parsed.get('object_part')}, issue={parsed.get('issue_type')}")
             return parsed
         except Exception as e:
-            logger.error(f"Both Groq and Gemini failed for claim parsing. Using local fallback. Error: {e}")
-            return self._local_fallback(clean_claim, claim_object)
-
-    def _local_fallback(self, clean_claim: str, claim_object: str) -> dict:
-        """Last-resort regex fallback when both APIs fail."""
-        obj_type = claim_object if claim_object in ["car", "laptop", "package"] else "unknown"
-
-        part = "unknown"
-        for p in ["front_bumper", "rear_bumper", "windshield", "side_mirror", "door",
-                  "headlight", "taillight", "body_panel",
-                  "screen", "hinge", "keyboard", "corner", "trackpad", "body", "lid", "port",
-                  "package_corner", "seal", "package_side", "label", "contents"]:
-            p_pat = p.replace("_", r"[\s_]")
-            if re.search(rf"(?i)\b{p_pat}\b", clean_claim):
-                part = p
-                break
-
-        issue = "unknown"
-        for i in ["dent", "scratch", "broken_part", "crack", "stain",
-                  "liquid_damage", "keys_missing", "crushed_packaging",
-                  "torn_packaging", "water_damage", "missing_item", "damaged_item"]:
-            i_pat = i.replace("_", r"[\s_]")
-            if re.search(rf"(?i)\b{i_pat}\b", clean_claim):
-                issue = i
-                break
-
-        return {
-            "object_type": obj_type,
-            "object_part": part,
-            "issue_type": issue,
-            "claim_summary": f"Local fallback. Raw: {clean_claim[:100]}...",
-            "severity_hint": "unknown"
-        }
+            logger.error(f"Both Groq and Gemini failed for claim parsing. Error: {e}")
+            raise Exception("Claim parsing requires live API access. Both primary and fallback APIs failed.")
