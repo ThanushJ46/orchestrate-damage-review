@@ -149,12 +149,13 @@ def main():
         
         results.append(out_row)
         
-    # 4. Save outputs
-    out_df = pd.DataFrame(results)
-    dirname = os.path.dirname(args.output)
-    if dirname:
-        os.makedirs(dirname, exist_ok=True)
-    out_df.to_csv(args.output, index=False)
+        # Save incrementally
+        out_df = pd.DataFrame(results)
+        dirname = os.path.dirname(args.output)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+        out_df.to_csv(args.output, index=False)
+        
     logger.info(f"Processing complete. Saved outputs to {args.output}")
     
     # 5. Run Evaluation if flag is set

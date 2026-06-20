@@ -56,13 +56,26 @@ class PipelineConfig:
         # Gemini config
         gemini_cfg = self.data.get("gemini", {})
         self.api_key_env_var = gemini_cfg.get("api_key_env_var", "GEMINI_API_KEY")
-        self.api_key = os.environ.get(self.api_key_env_var, "")
-        self.model_name = gemini_cfg.get("model_name", "gemini-2.5-flash")
-        self.fallback_model = gemini_cfg.get("fallback_model", "gemini-2.5-flash")
+        self.model_name = gemini_cfg.get("model_name", "gemini-2.5-flash-lite")
+        self.fallback_model = gemini_cfg.get("fallback_model", "gemini-2.5-flash-lite")
         self.temperature = gemini_cfg.get("temperature", 0.1)
         self.max_retries = gemini_cfg.get("max_retries", 3)
         self.timeout = gemini_cfg.get("timeout_seconds", 30)
         self.offline_mode = False
+
+        # Load ALL available Gemini API keys for rotation
+        self.api_keys = []
+        for k in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+                  "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6"]:
+            val = os.environ.get(k, "").strip()
+            if val:
+                self.api_keys.append(val)
+        self.api_key = self.api_keys[0] if self.api_keys else ""
+        logger.info(f"Loaded {len(self.api_keys)} Gemini API key(s) for rotation.")
+
+        # Groq config
+        self.groq_api_key = os.environ.get("GROQ_API_KEY", "")
+        self.groq_model = "llama-3.3-70b-versatile"
 
         # Rules
         rules_cfg = self.data.get("rules", {})
@@ -90,11 +103,26 @@ def is_non_rate_limit_error(exception):
 class SafeLLMCaller:
     def __init__(self, config: PipelineConfig):
         self.config = config
-        if self.config.api_key:
-            genai.configure(api_key=self.config.api_key)
+        self._key_index = 0
+        if self.config.api_keys:
+            genai.configure(api_key=self.config.api_keys[0])
+            logger.info(f"ClaimParser: Groq client initialized (model: {self.config.groq_model})")
         else:
-            logger.warning("GEMINI_API_KEY environment variable is not set.")
-            self.config.offline_mode = True
+            logger.warning("No GEMINI_API_KEY found. Pipeline cannot run.")
+            raise RuntimeError("No Gemini API keys configured.")
+
+    def _rotate_key(self) -> bool:
+        """Switch to the next available API key. Returns True if switched, False if all exhausted."""
+        next_index = self._key_index + 1
+        if next_index < len(self.config.api_keys):
+            self._key_index = next_index
+            new_key = self.config.api_keys[self._key_index]
+            genai.configure(api_key=new_key)
+            masked = new_key[:6] + "..." + new_key[-4:]
+            logger.warning(f"Key {self._key_index-1} exhausted. Rotated to key {self._key_index} ({masked}).")
+            return True
+        logger.error("ALL Gemini API keys exhausted. Cannot continue.")
+        return False
 
     def check_api_connectivity(self) -> bool:
         """
@@ -203,7 +231,7 @@ class SafeLLMCaller:
             raise ve
 
     def call_with_schema(self, system_instruction: str, prompt_content: str, schema: dict, image_parts: list = None) -> dict:
-        is_dry_run = os.environ.get("DRY_RUN", "false").lower() == "true" or not self.config.api_key or self.config.offline_mode
+        is_dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
         
         if is_dry_run:
             logger.info("Executing call_with_schema in OFFLINE MOCK MODE.")
@@ -424,10 +452,6 @@ class SafeLLMCaller:
                 contents.append(clean_part)
         
         while attempts < self.config.max_retries:
-            if self.config.offline_mode:
-                logger.warning("Offline fallback mode triggered due to rate limit or connection issues.")
-                raise SchemaValidationExceededError("Offline mode activated due to persistent rate limits.")
-
             current_prompt = prompt_content
             if error_context:
                 current_prompt += f"\n\n[SYSTEM ERROR]: Your previous output failed schema validation: {error_context}. Please fix the output according to the schema."
@@ -436,7 +460,6 @@ class SafeLLMCaller:
             run_contents = contents + [current_prompt]
             
             try:
-                # Use regular model first, if it fails multiple times, fall back to fallback model
                 model_to_use = self.config.model_name if attempts < 2 else self.config.fallback_model
                 response_text = self._call_gemini_api(model_to_use, system_instruction, run_contents)
                 
@@ -446,15 +469,11 @@ class SafeLLMCaller:
             except (json.JSONDecodeError, ValidationError, Exception) as e:
                 err_str = str(e).lower()
                 if "429" in err_str or "quota" in err_str or "exhausted" in err_str:
-                    rate_limit_attempts += 1
-                    if rate_limit_attempts >= 3:
-                        logger.error("Rate limit / Quota exceeded consistently (3 times). Activating graceful degradation to OFFLINE MOCK MODE.")
-                        self.config.offline_mode = True
-                        raise SchemaValidationExceededError("Rate limit exceeded consistently. Offline mode activated.")
-                    
-                    logger.warning(f"Rate limit / Quota exceeded (429). Sleeping for 65 seconds before retrying (attempt {rate_limit_attempts}/3)...")
-                    import time
-                    time.sleep(65)
+                    # Try rotating to next key immediately — no sleeping
+                    rotated = self._rotate_key()
+                    if not rotated:
+                        raise Exception("ALL Gemini API keys exhausted. Cannot process further images.")
+                    # Don't increment attempts — retry same request with new key
                     continue
                 attempts += 1
                 error_context = str(e)

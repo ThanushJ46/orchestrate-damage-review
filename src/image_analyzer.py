@@ -91,10 +91,9 @@ class ImageAnalyzer:
             parsed["image_id"] = image_id
             logger.info(f"Successfully analyzed image {image_id}. Object: {parsed.get('visible_object')}, Damage: {parsed.get('visible_damage')}")
             return parsed
-            
         except Exception as e:
-            logger.error(f"Failed to analyze image {image_id} via API. Triggering fallback. Error: {e}")
-            return self._get_fallback_payload(image_id, str(e))
+            logger.error(f"Failed to analyze image {image_id} via API. Error: {e}")
+            raise e
 
     def _get_fallback_payload(self, image_id: str, error_msg: str) -> dict:
         return {
