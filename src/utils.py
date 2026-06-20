@@ -418,7 +418,10 @@ class SafeLLMCaller:
         error_context = ""
         contents = []
         if image_parts:
-            contents.extend(image_parts)
+            # Strip any extra metadata fields (e.g. image_path) that the Gemini SDK doesn't accept
+            for part in image_parts:
+                clean_part = {k: v for k, v in part.items() if k in ("mime_type", "data")}
+                contents.append(clean_part)
         
         while attempts < self.config.max_retries:
             if self.config.offline_mode:
