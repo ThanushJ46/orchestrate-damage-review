@@ -54,8 +54,9 @@ def main():
     if connectivity_ok:
         logger.info("Gemini API connection established successfully. Running in ONLINE mode.")
     else:
-        logger.warning("Gemini API connection could not be verified. Operating in OFFLINE/MOCK mode.")
-        
+        logger.error("Gemini API connection could not be verified. Live API access required.")
+        sys.exit(1)
+
     results = []
     
     logger.info(f"Starting processing of {len(claims_df)} claims")
